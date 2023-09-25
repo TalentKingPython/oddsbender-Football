@@ -1,0 +1,60 @@
+{{- if .Values.gameScheduler.enabled }}
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ include "oddsbender-scrapers.fullname" . }}-game-scheduler
+  namespace: {{ .Release.Namespace }}
+spec:
+  schedule: {{ .Values.gameScheduler.schedule | quote}}
+  successfulJobsHistoryLimit: {{ .Values.gameScheduler.successfulJobsHistoryLimit | default 0 }}
+  failedJobsHistoryLimit: {{ .Values.gameScheduler.failedJobsHistoryLimit | default 1 }}
+  concurrencyPolicy: {{ .Values.gameScheduler.concurrencyPolicy | default "Forbid" }}
+  jobTemplate:
+    spec:
+      backoffLimit: {{ .Values.gameScheduler.backoffLimit | default 0 }}
+      template:
+        spec: 
+          {{- with .Values.imagePullSecrets }}
+          imagePullSecrets:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          serviceAccountName: {{ include "oddsbender-scrapers.serviceAccountName" . }}-game-scheduler
+          containers:
+            - name: scale-deployment
+              image: "{{.Values.gameScheduler.image.repository}}:{{.Values.gameScheduler.image.tag}}"
+              imagePullPolicy: IfNotPresent
+              command: {{ .Values.gameScheduler.command }}
+              args: {{ .Values.gameScheduler.args }}
+              volumeMounts:
+                - name: scale-config
+                  mountPath: /app/config
+              env:
+                - name: KUBE_NAMESPACE
+                  value: {{ .Release.Namespace }}
+                - name: SCALE_CONFIG_PATH
+                  value: /app/config/scale-config.yaml
+                - name: KUBERNETES_PREFIX
+                  value: {{.Values.gameScheduler.kubernetesPrefix}}
+                - name: IN_CLUSTER
+                  value: "true"
+              resources:
+                {{- toYaml .Values.gameScheduler.resources | nindent 16}}
+          volumes:
+            - name: scale-config
+              configMap:
+                name: {{include "oddsbender-scrapers.fullname" . }}-scale-config
+                defaultMode: 0744
+          restartPolicy: Never
+          {{- with .Values.gameScheduler.nodeSelector }}
+          nodeSelector:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.gameScheduler.affinity }}
+          affinity:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.gameScheduler.tolerations }}
+          tolerations:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+{{- end }}
